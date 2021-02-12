@@ -9,7 +9,7 @@
 import numpy as np
 import random
 from sklearn  import preprocessing
-
+import kaldiio
 import torch
 from torch import Tensor
 import torch.nn as nn
@@ -33,7 +33,8 @@ class LID_Vectorizer(object):
         num_frames,
         feature_dim,
         start_idx,
-        end_idx
+        end_idx,
+        cmvn
     ):
         """
         Args:
@@ -51,11 +52,11 @@ class LID_Vectorizer(object):
         self.feature_dim = feature_dim
         self.start_idx = start_idx
         self.end_idx = end_idx
-
+        self.speech_df = speech_df
         # form the dataframe, obtain the set of the labels in the dataset
         self.label_set = label_set
         self.lang2index = {}
-
+        self.cmvn = cmvn
         for i, label in enumerate(self.label_set):
             self.lang2index[label] = i
 
@@ -88,11 +89,12 @@ class LID_Vectorizer(object):
         if end_idx is None: end_idx = self.end_idx
 
         # path to feature vector sequence (normalized)
-        feat_path = self.data_dir + uttr_id + '.' + \
-            self.feature_type.lower() + '.norm.npy'
+        feat_path =  self.speech_df.loc[self.speech_df["uttr_id"]==uttr_id]["feat_path"].item()
 
         # load normalized feature sequence from desk
-        feature_repr  = np.load(feat_path)
+        feature_repr  = kaldiio.load_mat(feat_path)
+        feature_repr = feature_repr - self.cmvn
+        feature_repr = feature_repr.T
 
         # sampling is used to get a random segment from the speech signal
         # by default random segmentation is disabled
@@ -113,7 +115,7 @@ class LID_Vectorizer(object):
             feature_seq = feature_repr[start_idx:end_idx, sample_beg:sample_end]
 
         else: # if no random segmentation, i.e., during inference
-            feature_seq = feature_repr[start_idx:end_idx, :num_frames]
+            feature_seq = feature_repr[start_idx:end_idx, :]
 
 
         # convert to pytorch tensor
@@ -245,7 +247,7 @@ def generate_batches(dataset, batch_size, shuffle=True,
       ensure each tensor is on the write device location.
     """
     dataloader = DataLoader(dataset=dataset, batch_size=batch_size,
-                            shuffle=shuffle, drop_last=drop_last)
+                            shuffle=shuffle, drop_last=drop_last, num_workers=6)
 
     for data_dict in dataloader:
         out_data_dict = {}
@@ -688,7 +690,7 @@ class ConvNet_LID_DA(nn.Module):
         self.domain_classifier = nn.Sequential(
             nn.Linear(num_channels[2], 1024),
             nn.ReLU(),
-            nn.Linear(num_channels[2], 1024),
+            nn.Linear(1024, 1024),
             nn.ReLU(),
             nn.Linear(1024, 2)
         )
@@ -753,6 +755,7 @@ class ConvNet_LID_DA(nn.Module):
         reverse_f = GradientReversal.apply(f, grl_lambda)
 
         y_hat = self.language_classifier(f)
+        #print(reverse_f.shape)
         d_hat = self.domain_classifier(reverse_f)
 
         # softmax

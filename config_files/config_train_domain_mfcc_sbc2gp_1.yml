@@ -1,11 +1,13 @@
 source_data_dir: '/data/SBC_MFCC_NORM_1_13/'
 target_data_dir: '/data/GP_MFCC_NORM_1_13/'
-source_speech_metadata: '/SLR-GP/metadata/sbc_metadata_slavic.csv'
-target_speech_metadata: '/SLR-GP/metadata/gp_metadata_slavic.csv'
-model_state_file: '21042020_1800'
-model_save_dir: 'in_progress_models_x4/'
-source_language_set: 'BUL HRV CZE POL RUS UKR'
-target_language_set: 'BUL HRV CZE POL RUS UKR'
+source_speech_metadata: '/home/gnani/LID_DA/source_600.csv'
+target_speech_metadata: '/home/gnani/LID_DA/target_600.csv'
+source_cmvn: '/home/gnani/LID_DA/train/cmvn.ark'
+target_cmvn: '/home/gnani/LID_DA/trell_train/cmvn.ark'
+model_state_file: 'first_model'
+model_save_dir: 'test2/'
+source_language_set: 'bengali english hindi kannada malayalam marathi tamil telugu'
+target_language_set: 'hindi'
 seed: 1337
 input_signal_params:
     feature_type: 'MFCC'
@@ -15,11 +17,11 @@ input_signal_params:
     sampling_rate: 16000
     sample_segment: True
     start_index: 0
-    end_index: 13
+    end_index: 40
 model_arch:
     nn_model: ConvNet_DA
-    feature_dim: 13
-    num_classes: 6
+    feature_dim: 40
+    num_classes: 8
     bottleneck: True
     bottleneck_size: 512
     output_dim: 512
@@ -48,3 +50,4 @@ cuda: True
 catch_keyboard_interrupt: True
 reload_from_files: False
 expand_filepaths_to_save_dir: True
+

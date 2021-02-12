@@ -24,7 +24,7 @@ from torch.utils.data.dataset import Dataset
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-
+import kaldiio
 from nn_speech_models import *
 
 # Training Routine
@@ -172,13 +172,12 @@ handle_dirs(config_args['model_save_dir'])
 
 ##### HERE IT ALL STARTS ...
 # source vectorizer ...
-source_speech_df = pd.read_csv(config_args['source_speech_metadata'],
-    delimiter="\t", encoding='utf-8')
+source_speech_df = pd.read_csv(config_args['source_speech_metadata'], encoding='utf-8')
 
 source_label_set=config_args['source_language_set'].split()
 
 # make sure no utterances with 0 duration such as
-source_speech_df = source_speech_df[(source_speech_df.duration!=0)]
+#source_speech_df = source_speech_df[(source_speech_df.duration!=0)]
 
 source_speech_df = source_speech_df[(source_speech_df['language'].isin(source_label_set))]
 
@@ -186,18 +185,22 @@ source_speech_df = source_speech_df[(source_speech_df['language'].isin(source_la
 len(source_speech_df), source_label_set
 
 # source vectorizer ...
-target_speech_df = pd.read_csv(config_args['target_speech_metadata'],
-    delimiter="\t", encoding='utf-8')
+target_speech_df = pd.read_csv(config_args['target_speech_metadata'], encoding='utf-8')
 
 target_label_set=config_args['target_language_set'].split()
 
 # make sure no utterances with 0 duration such as
-target_speech_df = target_speech_df[(target_speech_df.duration!=0)]
+#target_speech_df = target_speech_df[(target_speech_df.duration!=0)]
 
 target_speech_df = target_speech_df[(target_speech_df['language'].isin(target_label_set))]
 
 len(target_speech_df), target_label_set
 
+
+cmvn_stats = kaldiio.load_mat(config_args['source_cmvn'])
+mean_stats = cmvn_stats[0,:-1]
+count = cmvn_stats[0,-1]
+offset = np.expand_dims(mean_stats,0)/count
 
 source_speech_vectorizer = LID_Vectorizer(
     data_dir=config_args['source_data_dir'],
@@ -208,11 +211,15 @@ source_speech_vectorizer = LID_Vectorizer(
     num_frames=config_args['input_signal_params']['num_frames'],
     feature_dim=config_args['model_arch']['feature_dim'],
     start_idx=config_args['input_signal_params']['start_index'],
-    end_idx=config_args['input_signal_params']['end_index']
+    end_idx=config_args['input_signal_params']['end_index'],
+    cmvn = offset
 )
 print(source_speech_vectorizer.index2lang)
 
-
+cmvn_stats = kaldiio.load_mat(config_args['target_cmvn'])
+mean_stats = cmvn_stats[0,:-1]
+count = cmvn_stats[0,-1]
+offset = np.expand_dims(mean_stats,0)/count
 
 target_speech_vectorizer = LID_Vectorizer(
     data_dir=config_args['target_data_dir'],
@@ -223,7 +230,8 @@ target_speech_vectorizer = LID_Vectorizer(
     num_frames=config_args['input_signal_params']['num_frames'],
     feature_dim=config_args['model_arch']['feature_dim'],
     start_idx=config_args['input_signal_params']['start_index'],
-    end_idx=config_args['input_signal_params']['end_index']
+    end_idx=config_args['input_signal_params']['end_index'],
+    cmvn = offset
 )
 print(target_speech_vectorizer.index2lang)
 
@@ -334,21 +342,23 @@ try:
             p = float(batch_index + epoch_index * max_batches) / (num_epochs * max_batches)
             _lambda = 2. / (1. + np.exp(-5 * p)) - 1
 
-
+            #print("src_batch_dict['x_data']:",src_batch_dict['x_data'].shape)
+            bs = src_batch_dict['x_data'].shape[0] 
             # step 3. forward pass and compute loss on source domain
-            src_dmn_trues = torch.zeros(batch_size, dtype=torch.long, device=config_args['device']) # generate source domain labels
+            src_dmn_trues = torch.zeros(bs, dtype=torch.long, device=config_args['device']) # generate source domain labels
             src_cls_trues = src_batch_dict['y_target']
             src_cls_preds, src_dmn_preds = nn_LID_model_DA(x_in=src_batch_dict['x_data'], grl_lambda=_lambda)
-
+            # print("src_cls_preds:",src_cls_preds.shape,"src_cls_trues:",src_cls_trues.shape)
             loss_src_cls = loss_func_cls(src_cls_preds, src_cls_trues)
-
-            #print(src_dmn_preds.shape, src_dmn_trues.shape)
+            
+            # print("src_dmn_preds:",src_dmn_preds.shape, "src_dmn_trues:",src_dmn_trues.shape)
             loss_src_dmn = loss_func_dmn(src_dmn_preds, src_dmn_trues)
 
             # step 4. forward pass and compute loss on target domain
-            tgt_dmn_trues = torch.ones(batch_size, dtype=torch.long, device=config_args['device']) # generate source domain labels
+            tgt_dmn_trues = torch.ones(tgt_batch_dict['x_data'].shape[0], dtype=torch.long, device=config_args['device']) # generate source domain labels
             _, tgt_dmn_preds = nn_LID_model_DA(x_in=tgt_batch_dict['x_data'], grl_lambda=_lambda)
 
+            # print("tgt_dmn_preds:",tgt_dmn_preds.shape,"tgt_dmn_trues:",tgt_dmn_trues.shape)
             loss_tgt_dmn = loss_func_dmn(tgt_dmn_preds, tgt_dmn_trues)
 
             # step 5. add different losses to one var
@@ -435,7 +445,7 @@ try:
         for batch_index, (src_batch_dict, tgt_batch_dict) in enumerate(zip(source_batch_generator, target_batch_generator)):
 
             # step 1. forward pass and compute loss on source domain
-            src_dmn_trues = torch.zeros(batch_size, dtype=torch.long, device=config_args['device']) # generate source domain labels
+            src_dmn_trues = torch.zeros(src_batch_dict['x_data'].shape[0], dtype=torch.long, device=config_args['device']) # generate source domain labels
             src_cls_trues = src_batch_dict['y_target']
             src_cls_preds, src_dmn_preds = nn_LID_model_DA(x_in=src_batch_dict['x_data'])
 
@@ -443,9 +453,9 @@ try:
             loss_src_dmn = loss_func_dmn(src_dmn_preds, src_dmn_trues)
 
             # step 2. forward pass and compute loss on target domain
-            tgt_dmn_trues = torch.ones(batch_size, dtype=torch.long, device=config_args['device']) # generate source domain labels
+            tgt_dmn_trues = torch.ones(tgt_batch_dict['x_data'].shape[0], dtype=torch.long, device=config_args['device']) # generate source domain labels
             tgt_cls_trues = tgt_batch_dict['y_target']
-            tgt_cls_preds, tgt_dmn_preds = nn_LID_model_DA(x_in=tgt_batch_dict['x_data'])
+            _, tgt_dmn_preds = nn_LID_model_DA(x_in=tgt_batch_dict['x_data'])
 
             loss_tgt_dmn = loss_func_dmn(tgt_dmn_preds, tgt_dmn_trues)
 
@@ -484,24 +494,23 @@ try:
 
             # compute balanced acc calc
             src_true_labels, src_pred_labels = get_predictions(src_cls_preds, src_cls_trues)
-            tgt_true_labels, tgt_pred_labels = get_predictions(tgt_cls_preds, tgt_cls_trues)
+            #tgt_true_labels, tgt_pred_labels = get_predictions(tgt_cls_preds, tgt_cls_trues)
 
             y_src_true.extend(src_true_labels)
             y_src_pred.extend(src_pred_labels)
-            y_tgt_true.extend(tgt_true_labels)
-            y_tgt_pred.extend(tgt_pred_labels)
+            #y_tgt_true.extend(tgt_true_labels)
+            #y_tgt_pred.extend(tgt_pred_labels)
 
         src_cls_acc_ep = balanced_accuracy_score(y_src_true, y_src_pred)*100
-        tgt_cls_acc_ep = balanced_accuracy_score(y_tgt_true, y_tgt_pred)*100
+        #tgt_cls_acc_ep = balanced_accuracy_score(y_tgt_true, y_tgt_pred)*100
 
         print(f"Summary Epoch num: [{epoch_index + 1:>2}/{num_epochs}]: "
               f"OVERALL CLS LOSS: {loss: 2.3f} "
-              f"SRC CLS ACC: {src_cls_acc_ep:2.3f} "
-              f"TGT CLS ACC: {tgt_cls_acc_ep:2.3f} \n"
+              f"SRC CLS ACC: {src_cls_acc_ep:2.3f} \n"
             )
 
         src_val_balanced_acc_scores.append(src_cls_acc_ep)
-        tgt_val_balanced_acc_scores.append(tgt_cls_acc_ep)
+        #tgt_val_balanced_acc_scores.append(tgt_cls_acc_ep)
 
         train_state['val_loss'].append(running_cls_loss)
         train_state['val_acc'].append(running_cls_acc)
@@ -530,9 +539,9 @@ print('Best epoch by balanced acc: {:.3f} epoch {}'.format(max(src_val_balanced_
 
 
 print()
-for i, acc in enumerate(tgt_val_balanced_acc_scores):
-    print("Validation Acc {} {:.3f}".format(i+1, acc))
+#for i, acc in enumerate(tgt_val_balanced_acc_scores):
+#    print("Validation Acc {} {:.3f}".format(i+1, acc))
 
 
-print('Best epoch by balanced acc: {:.3f} epoch {}'.format(max(tgt_val_balanced_acc_scores),
-    1 + np.argmax(tgt_val_balanced_acc_scores)))
+#print('Best epoch by balanced acc: {:.3f} epoch {}'.format(max(tgt_val_balanced_acc_scores),
+#    1 + np.argmax(tgt_val_balanced_acc_scores)))
