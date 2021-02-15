@@ -1,3 +1,4 @@
+best_model: 'test3/first_model_ConvNet_DA_MFCC_domain_sbc2gp31.pth'
 source_data_dir: '/data/SBC_MFCC_NORM_1_13/'
 target_data_dir: '/data/GP_MFCC_NORM_1_13/'
 source_speech_metadata: '/home/gnani/LID_DA/source.csv'
