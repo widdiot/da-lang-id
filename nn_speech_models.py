@@ -8,7 +8,7 @@
 
 import numpy as np
 import random
-#from sklearn  import preprocessing
+# from sklearn  import preprocessing
 import kaldiio
 import torch
 from torch import Tensor
@@ -18,6 +18,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset
 from torch.autograd import Function
+from netvlad import NetVLAD
 
 
 ##### CLASS LID_Vectorizer
@@ -25,17 +26,17 @@ class LID_Vectorizer(object):
     """ The Vectorizer which takes care of speech data transformation. """
 
     def __init__(self,
-        data_dir,
-        speech_df,
-        feature_type,
-        label_set,
-        max_num_frames,
-        num_frames,
-        feature_dim,
-        start_idx,
-        end_idx,
-        cmvn
-    ):
+                 data_dir,
+                 speech_df,
+                 feature_type,
+                 label_set,
+                 max_num_frames,
+                 num_frames,
+                 feature_dim,
+                 start_idx,
+                 end_idx,
+                 cmvn
+                 ):
         """
         Args:
             data_dir (str): the path to the data on disk to read .npy files
@@ -60,18 +61,17 @@ class LID_Vectorizer(object):
         for i, label in enumerate(self.label_set):
             self.lang2index[label] = i
 
-        self.index2lang = {i:l for (l, i) in self.lang2index.items()}
-
+        self.index2lang = {i: l for (l, i) in self.lang2index.items()}
 
     def transform_signal_X(self,
-        uttr_id,
-        max_num_frames=None,
-        num_frames=None,
-        feature_dim=None,
-        start_idx=None,
-        end_idx=None,
-        segment_random=False
-    ):
+                           uttr_id,
+                           max_num_frames=None,
+                           num_frames=None,
+                           feature_dim=None,
+                           start_idx=None,
+                           end_idx=None,
+                           segment_random=False
+                           ):
         """
         Given a uttr_id and some other utterance-related data,
         return a feature sequence representation of the utterance.
@@ -89,10 +89,10 @@ class LID_Vectorizer(object):
         if end_idx is None: end_idx = self.end_idx
 
         # path to feature vector sequence (normalized)
-        feat_path =  self.speech_df.loc[self.speech_df["uttr_id"]==uttr_id]["feat_path"].item()
+        feat_path = self.speech_df.loc[self.speech_df["uttr_id"] == uttr_id]["feat_path"].item()
 
         # load normalized feature sequence from desk
-        feature_repr  = kaldiio.load_mat(feat_path)
+        feature_repr = kaldiio.load_mat(feat_path)
         feature_repr = feature_repr - self.cmvn
         feature_repr = feature_repr.T
 
@@ -100,7 +100,7 @@ class LID_Vectorizer(object):
         # by default random segmentation is disabled
         if segment_random:
             # sample N frames from the utterance
-            uttr_len = feature_repr.shape[1]   # utterance length in frames
+            uttr_len = feature_repr.shape[1]  # utterance length in frames
 
             # if the signal is shorter than num_frames, take it as it is
             # added this for short utterances in DEV, EVA set
@@ -114,9 +114,8 @@ class LID_Vectorizer(object):
             sample_end = sample_beg + num_frames
             feature_seq = feature_repr[start_idx:end_idx, sample_beg:sample_end]
 
-        else: # if no random segmentation, i.e., during inference
+        else:  # if no random segmentation, i.e., during inference
             feature_seq = feature_repr[start_idx:end_idx, :]
-
 
         # convert to pytorch tensor
         feature_tensor = torch.from_numpy(feature_seq)
@@ -136,12 +135,10 @@ class LID_Vectorizer(object):
         # to deal with short utterances in DEV and EVA splits
         num_frames = min(feature_repr.shape[1], num_frames)
 
-        padded_feature_tensor[:feature_dim,frame_start_idx:frame_start_idx + num_frames] = \
-            feature_tensor[:feature_dim,:num_frames]
+        padded_feature_tensor[:feature_dim, frame_start_idx:frame_start_idx + num_frames] = \
+            feature_tensor[:feature_dim, :num_frames]
 
-
-        return padded_feature_tensor.float() # convert to float tensor
-
+        return padded_feature_tensor.float()  # convert to float tensor
 
     def transform_label_y(self, label):
         """
@@ -166,16 +163,16 @@ class LID_Dataset(Dataset):
         self._vectorizer = vectorizer
 
         # read data and make splits
-        self.train_df = self.speech_df[self.speech_df.split=='TRA']
+        self.train_df = self.speech_df[self.speech_df.split == 'TRA']
         self.train_size = len(self.train_df)
 
-        self.val_df = self.speech_df[self.speech_df.split=='DEV']
+        self.val_df = self.speech_df[self.speech_df.split == 'DEV']
         self.val_size = len(self.val_df)
 
-        self.test_df = self.speech_df[self.speech_df.split=='EVA']
+        self.test_df = self.speech_df[self.speech_df.split == 'EVA']
         self.test_size = len(self.test_df)
 
-        #print(self.train_size, self.val_size, self.test_size)
+        # print(self.train_size, self.val_size, self.test_size)
 
         self._lookup_dict = {
             'TRA': (self.train_df, self.train_size),
@@ -189,16 +186,13 @@ class LID_Dataset(Dataset):
         # this was added to differentiate between training & inference
         self.debug_mode = None
 
-
     def set_mode(self, split='TRA'):
-         """Set the mode using the split column in the dataframe. """
-         self._target_split = split
-         self._target_df, self._target_size = self._lookup_dict[split]
-
+        """Set the mode using the split column in the dataframe. """
+        self._target_split = split
+        self._target_df, self._target_size = self._lookup_dict[split]
 
     def __len__(self):
         return self._target_size
-
 
     def __getitem__(self, index):
         """Data transformation logic for one data point.
@@ -211,13 +205,13 @@ class LID_Dataset(Dataset):
         uttr = self._target_df.iloc[index]
 
         # enable random segmentation during training
-        is_training = (self._target_split=='TRA')
+        is_training = (self._target_split == 'TRA')
 
         feature_sequence = self._vectorizer.transform_signal_X(uttr.uttr_id,
-            segment_random = is_training,
-            num_frames=None, # it is important to set this to None
-            feature_dim=None
-        )
+                                                               segment_random=is_training,
+                                                               num_frames=None,  # it is important to set this to None
+                                                               feature_dim=None
+                                                               )
 
         lang_idx = self._vectorizer.transform_label_y(uttr.language)
 
@@ -226,7 +220,6 @@ class LID_Dataset(Dataset):
             'y_target': lang_idx,
             'uttr_id': uttr.uttr_id
         }
-
 
     def get_num_batches(self, batch_size):
         """Given a batch size, return the number of batches in the dataset
@@ -275,7 +268,7 @@ class FrameDropout(nn.Module):
 
         # randomly sample frame indecies to be dropped
         drop_frame_idx = [i for i in range(sequence_dim) \
-            if torch.rand(1).item() < self.dropout_prob]
+                          if torch.rand(1).item() < self.dropout_prob]
 
         x_in[:, :, drop_frame_idx] = 0
 
@@ -298,7 +291,7 @@ class FeatureDropout(nn.Module):
 
         # randomly sample frame indecies to be dropped
         drop_feature_idx = [i for i in range(feature_dim) \
-            if torch.rand(1).item() < self.dropout_prob]
+                            if torch.rand(1).item() < self.dropout_prob]
 
         x_in[:, drop_feature_idx, :] = 0
 
@@ -334,7 +327,7 @@ class FrameShuffle(nn.Module):
         seq_idx = list(range(seq_dim))
 
         # here, a list of bags (lists) will be made
-        frame_bags = [seq_idx[i:i+bag_size] for i in range(0, seq_dim, bag_size)]
+        frame_bags = [seq_idx[i:i + bag_size] for i in range(0, seq_dim, bag_size)]
 
         # shuffle the bags
         random.shuffle(frame_bags)
@@ -350,19 +343,19 @@ class FrameShuffle(nn.Module):
 ##### A Convolutional model: Spoken Language ID model
 class ConvNet_LID(nn.Module):
     def __init__(self,
-        feature_dim=14,
-        num_classes=6,
-        bottleneck=False,
-        bottleneck_size=64,
-        signal_dropout_prob=0.2,
-        num_channels=[128, 256, 512],
-        filter_sizes=[5, 10, 10],
-        stride_steps=[1, 1, 1],
-        output_dim=512,
-        pooling_type='max',
-        dropout_frames=False,
-        dropout_features=False,
-        mask_signal=False):
+                 feature_dim=14,
+                 num_classes=6,
+                 bottleneck=False,
+                 bottleneck_size=64,
+                 signal_dropout_prob=0.2,
+                 num_channels=[128, 256, 512],
+                 filter_sizes=[5, 10, 10],
+                 stride_steps=[1, 1, 1],
+                 output_dim=512,
+                 pooling_type='max',
+                 dropout_frames=False,
+                 dropout_features=False,
+                 mask_signal=False):
         """
         Args:
             feature_dim (int): size of the feature vector
@@ -400,12 +393,11 @@ class ConvNet_LID(nn.Module):
         self.dropout_features = dropout_features
         self.mask_signal = mask_signal
 
-
         # signal dropout_layer
-        if self.dropout_frames: # if frame dropout is enables
+        if self.dropout_frames:  # if frame dropout is enables
             self.signal_dropout = FrameDropout(self.signal_dropout_prob)
 
-        elif self.dropout_features: # if frame dropout is enables
+        elif self.dropout_features:  # if frame dropout is enables
             self.signal_dropout = FeatureDropout(self.signal_dropout_prob)
 
         # frame reversal layer
@@ -414,14 +406,12 @@ class ConvNet_LID(nn.Module):
         # frame reversal layer
         self.frame_shuffle = FrameShuffle()
 
-
-
         # Convolutional Block 1
         self.ConvLayer1 = nn.Sequential(
             nn.Conv1d(in_channels=self.feature_dim,
-                out_channels=num_channels[0],
-                kernel_size=filter_sizes[0],
-                stride=stride_steps[0]),
+                      out_channels=num_channels[0],
+                      kernel_size=filter_sizes[0],
+                      stride=stride_steps[0]),
             nn.BatchNorm1d(num_channels[0]),
             nn.ReLU()
         )
@@ -429,9 +419,9 @@ class ConvNet_LID(nn.Module):
         # Convolutional Block 2
         self.ConvLayer2 = nn.Sequential(
             nn.Conv1d(in_channels=num_channels[0],
-                out_channels=num_channels[1],
-                kernel_size=filter_sizes[1],
-                stride=stride_steps[1]),
+                      out_channels=num_channels[1],
+                      kernel_size=filter_sizes[1],
+                      stride=stride_steps[1]),
             nn.BatchNorm1d(num_channels[1]),
             nn.ReLU()
         )
@@ -439,9 +429,9 @@ class ConvNet_LID(nn.Module):
         # Convolutional Block 3
         self.ConvLayer3 = nn.Sequential(
             nn.Conv1d(in_channels=num_channels[1],
-                out_channels=num_channels[2],
-                kernel_size=filter_sizes[2],
-                stride=stride_steps[2]),
+                      out_channels=num_channels[2],
+                      kernel_size=filter_sizes[2],
+                      stride=stride_steps[2]),
             nn.BatchNorm1d(num_channels[2]),
             nn.ReLU()
         )
@@ -460,38 +450,37 @@ class ConvNet_LID(nn.Module):
         if bottleneck:
             # Bottleneck layer
             self.language_classifier.add_module("fc_bn",
-                nn.Linear(num_channels[2], self.bottleneck_size))
+                                                nn.Linear(num_channels[2], self.bottleneck_size))
             self.language_classifier.add_module("relu_bn", nn.ReLU())
 
             # then project to higher dim
             self.language_classifier.add_module("fc2",
-                nn.Linear(self.bottleneck_size, self.output_dim))
+                                                nn.Linear(self.bottleneck_size, self.output_dim))
             self.language_classifier.add_module("relu_fc2", nn.ReLU())
 
         else:
             # then project to two identical fc layers
-            #self.language_classifier.add_module("fc1", nn.Linear(512, 512))
-            #self.language_classifier.add_module("relu_fc1", nn.ReLU())
+            # self.language_classifier.add_module("fc1", nn.Linear(512, 512))
+            # self.language_classifier.add_module("relu_fc1", nn.ReLU())
 
             self.language_classifier.add_module("fc2",
-                nn.Linear(num_channels[2], self.output_dim))
+                                                nn.Linear(num_channels[2], self.output_dim))
             self.language_classifier.add_module("relu_fc2", nn.ReLU())
 
         # Output fully connected --> softmax
         self.language_classifier.add_module("y_hat",
-            nn.Linear(self.output_dim, num_classes))
-
+                                            nn.Linear(self.output_dim, num_classes))
 
     def forward(self,
-        x_in,
-        apply_softmax=False,
-        return_bn=False,
-        frame_dropout=False,
-        feature_dropout=False,
-        frame_reverse=False,
-        frame_shuffle=False,
-        shuffle_bag_size= 1
-    ):
+                x_in,
+                apply_softmax=False,
+                return_bn=False,
+                frame_dropout=False,
+                feature_dropout=False,
+                frame_reverse=False,
+                frame_shuffle=False,
+                shuffle_bag_size=1
+                ):
         """The forward pass of the classifier
 
         Args:
@@ -509,7 +498,6 @@ class ConvNet_LID(nn.Module):
         # signal dropout, disabled when evaluating unless explicitly asked for
         if self.training:
             x_in = self.signal_dropout(x_in)
-
 
         # signal masking during inference
         if self.eval and self.mask_signal:
@@ -535,7 +523,6 @@ class ConvNet_LID(nn.Module):
 
                 if _name == 'relu_bn':
                     return feature_vector
-
 
         y_hat = self.language_classifier(f)
 
@@ -569,19 +556,19 @@ class GradientReversal(Function):
 ##### DA-LID I: Spoken Language ID Model with Domain Adaptation [1]
 class ConvNet_LID_DA(nn.Module):
     def __init__(self,
-        feature_dim=14,
-        num_classes=6,
-        bottleneck=False,
-        bottleneck_size=64,
-        signal_dropout_prob=0.2,
-        num_channels=[128, 256, 512],
-        filter_sizes=[5, 10, 10],
-        stride_steps=[1, 1, 1],
-        output_dim=512,
-        pooling_type='max',
-        dropout_frames=False,
-        dropout_features=False,
-        mask_signal=False):
+                 feature_dim=14,
+                 num_classes=6,
+                 bottleneck=False,
+                 bottleneck_size=64,
+                 signal_dropout_prob=0.2,
+                 num_channels=[128, 256, 512],
+                 filter_sizes=[5, 10, 10],
+                 stride_steps=[1, 1, 1],
+                 output_dim=512,
+                 pooling_type='max',
+                 dropout_frames=False,
+                 dropout_features=False,
+                 mask_signal=False):
         """
         Args:
             feature_dim (int): size of the feature vector
@@ -619,12 +606,11 @@ class ConvNet_LID_DA(nn.Module):
         self.dropout_features = dropout_features
         self.mask_signal = mask_signal
 
-
         # signal dropout_layer
-        if self.dropout_frames: # if frame dropout is enables
+        if self.dropout_frames:  # if frame dropout is enables
             self.signal_dropout = FrameDropout(self.signal_dropout_prob)
 
-        elif self.dropout_features: # if frame dropout is enables
+        elif self.dropout_features:  # if frame dropout is enables
             self.signal_dropout = FeatureDropout(self.signal_dropout_prob)
 
         # frame reversal layer
@@ -636,9 +622,9 @@ class ConvNet_LID_DA(nn.Module):
         # Convolutional Block 1
         self.ConvLayer1 = nn.Sequential(
             nn.Conv1d(in_channels=self.feature_dim,
-                out_channels=num_channels[0],
-                kernel_size=filter_sizes[0],
-                stride=stride_steps[0]),
+                      out_channels=num_channels[0],
+                      kernel_size=filter_sizes[0],
+                      stride=stride_steps[0]),
             nn.BatchNorm1d(num_channels[0]),
             nn.ReLU()
         )
@@ -646,9 +632,9 @@ class ConvNet_LID_DA(nn.Module):
         # Convolutional Block 2
         self.ConvLayer2 = nn.Sequential(
             nn.Conv1d(in_channels=num_channels[0],
-                out_channels=num_channels[1],
-                kernel_size=filter_sizes[1],
-                stride=stride_steps[1]),
+                      out_channels=num_channels[1],
+                      kernel_size=filter_sizes[1],
+                      stride=stride_steps[1]),
             nn.BatchNorm1d(num_channels[1]),
             nn.ReLU()
         )
@@ -656,9 +642,9 @@ class ConvNet_LID_DA(nn.Module):
         # Convolutional Block 3
         self.ConvLayer3 = nn.Sequential(
             nn.Conv1d(in_channels=num_channels[1],
-                out_channels=num_channels[2],
-                kernel_size=filter_sizes[2],
-                stride=stride_steps[2]),
+                      out_channels=num_channels[2],
+                      kernel_size=filter_sizes[2],
+                      stride=stride_steps[2]),
             nn.BatchNorm1d(num_channels[2]),
             nn.ReLU()
         )
@@ -668,6 +654,10 @@ class ConvNet_LID_DA(nn.Module):
             # after examining the dataflow in the network and
             # observing the resulting tensor shapes
             self.PoolLayer = nn.MaxPool1d(kernel_size=362, stride=1)
+
+        elif self.pooling_type == 'vlad':
+            self.PoolLayer = NetVLAD(num_clusters=32, dim=512, alpha=1.0)
+
         else:
             raise NotImplementedError
 
@@ -675,17 +665,17 @@ class ConvNet_LID_DA(nn.Module):
         self.language_classifier = torch.nn.Sequential()
 
         self.language_classifier.add_module("fc_bn",
-            nn.Linear(num_channels[2], self.bottleneck_size))
+                                            nn.Linear(num_channels[2], self.bottleneck_size))
         self.language_classifier.add_module("relu_bn", nn.ReLU())
 
         # then project to higher dim
         self.language_classifier.add_module("fc2",
-            nn.Linear(self.bottleneck_size, self.output_dim))
+                                            nn.Linear(self.bottleneck_size, self.output_dim))
         self.language_classifier.add_module("relu_fc2", nn.ReLU())
 
         # Output fully connected --> softmax
         self.language_classifier.add_module("y_hat",
-            nn.Linear(self.output_dim, num_classes))
+                                            nn.Linear(self.output_dim, num_classes))
 
         self.domain_classifier = nn.Sequential(
             nn.Linear(num_channels[2], 1024),
@@ -695,18 +685,17 @@ class ConvNet_LID_DA(nn.Module):
             nn.Linear(1024, 2)
         )
 
-
     def forward(self,
-        x_in,
-        apply_softmax=False,
-        return_bn=False,
-        frame_dropout=False,
-        feature_dropout=False,
-        frame_reverse=False,
-        frame_shuffle=False,
-        shuffle_bag_size= 1,
-        grl_lambda=1.0
-    ):
+                x_in,
+                apply_softmax=False,
+                return_bn=False,
+                frame_dropout=False,
+                feature_dropout=False,
+                frame_reverse=False,
+                frame_shuffle=False,
+                shuffle_bag_size=1,
+                grl_lambda=1.0
+                ):
         """The forward pass of the classifier
 
         Args:
@@ -725,7 +714,6 @@ class ConvNet_LID_DA(nn.Module):
         if self.training:
             x_in = self.signal_dropout(x_in)
 
-
         # signal masking during inference
         if self.eval and self.mask_signal:
             x_in = self.signal_dropout(x_in)
@@ -740,7 +728,12 @@ class ConvNet_LID_DA(nn.Module):
         f = self.ConvLayer3(f)
 
         # max pooling
-        f = self.PoolLayer(f).squeeze(dim=2)
+
+        if self.pooling_type == 'max':
+            f = self.PoolLayer(f).squeeze(dim=2)
+
+        elif self.pooling_type == 'vlad':
+            f = self.PoolLayer(f.unsqueeze(-1))
 
         # if we need to analyze bottle neck feature, go into this code block
         # if return_bn:
@@ -751,11 +744,10 @@ class ConvNet_LID_DA(nn.Module):
         #         if _name == 'relu_bn':
         #             return feature_vector
 
-
         reverse_f = GradientReversal.apply(f, grl_lambda)
         print(f.shape)
         y_hat = self.language_classifier(f)
-        #print(reverse_f.shape)
+        # print(reverse_f.shape)
         d_hat = self.domain_classifier(reverse_f)
 
         # softmax
@@ -764,18 +756,17 @@ class ConvNet_LID_DA(nn.Module):
 
         return y_hat, d_hat
 
-
     def emb(self,
-        x_in,
-        apply_softmax=False,
-        return_bn=False,
-        frame_dropout=False,
-        feature_dropout=False,
-        frame_reverse=False,
-        frame_shuffle=False,
-        shuffle_bag_size= 1,
-        grl_lambda=1.0
-    ):
+            x_in,
+            apply_softmax=False,
+            return_bn=False,
+            frame_dropout=False,
+            feature_dropout=False,
+            frame_reverse=False,
+            frame_shuffle=False,
+            shuffle_bag_size=1,
+            grl_lambda=1.0
+            ):
         """The forward pass of the classifier
 
         Args:
@@ -796,7 +787,7 @@ class ConvNet_LID_DA(nn.Module):
             f = self.ConvLayer1(x_in)
             f = self.ConvLayer2(f)
             f = self.ConvLayer3(f)
-#           print(f.shape)
+            #           print(f.shape)
             # max pooling
             f = self.PoolLayer(f).squeeze(dim=2)
             y_hat = self.language_classifier.fc_bn(f)
@@ -806,20 +797,20 @@ class ConvNet_LID_DA(nn.Module):
 ##### DA-LID II: Spoken Language ID Model with Domain Adaptation [2]
 class ConvNet_LID_DA_2(nn.Module):
     def __init__(self,
-        feature_dim=14,
-        num_classes=6,
-        bottleneck=False,
-        bottleneck_size=64,
-        signal_dropout_prob=0.2,
-        num_channels=[128, 256, 512],
-        filter_sizes=[5, 10, 10],
-        stride_steps=[1, 1, 1],
-        output_dim=512,
-        pooling_type='max',
-        dropout_frames=False,
-        dropout_features=False,
-        #unit_dropout_prob=0.5,
-        mask_signal=False):
+                 feature_dim=14,
+                 num_classes=6,
+                 bottleneck=False,
+                 bottleneck_size=64,
+                 signal_dropout_prob=0.2,
+                 num_channels=[128, 256, 512],
+                 filter_sizes=[5, 10, 10],
+                 stride_steps=[1, 1, 1],
+                 output_dim=512,
+                 pooling_type='max',
+                 dropout_frames=False,
+                 dropout_features=False,
+                 # unit_dropout_prob=0.5,
+                 mask_signal=False):
         """
         Args:
             feature_dim (int): size of the feature vector
@@ -850,7 +841,7 @@ class ConvNet_LID_DA_2(nn.Module):
         super(ConvNet_LID_DA_2, self).__init__()
         self.feature_dim = feature_dim
         self.signal_dropout_prob = signal_dropout_prob
-        #self.unit_dropout_prob = unti_dropout_prob
+        # self.unit_dropout_prob = unti_dropout_prob
         self.pooling_type = pooling_type
         self.bottleneck_size = bottleneck_size
         self.output_dim = output_dim
@@ -858,12 +849,11 @@ class ConvNet_LID_DA_2(nn.Module):
         self.dropout_features = dropout_features
         self.mask_signal = mask_signal
 
-
         # signal dropout_layer
-        if self.dropout_frames: # if frame dropout is enables
+        if self.dropout_frames:  # if frame dropout is enables
             self.signal_dropout = FrameDropout(self.signal_dropout_prob)
 
-        elif self.dropout_features: # if frame dropout is enables
+        elif self.dropout_features:  # if frame dropout is enables
             self.signal_dropout = FeatureDropout(self.signal_dropout_prob)
 
         # frame reversal layer
@@ -875,9 +865,9 @@ class ConvNet_LID_DA_2(nn.Module):
         # Convolutional Block 1
         self.ConvLayer1 = nn.Sequential(
             nn.Conv1d(in_channels=self.feature_dim,
-                out_channels=num_channels[0],
-                kernel_size=filter_sizes[0],
-                stride=stride_steps[0]),
+                      out_channels=num_channels[0],
+                      kernel_size=filter_sizes[0],
+                      stride=stride_steps[0]),
             nn.BatchNorm1d(num_channels[0]),
             nn.ReLU()
         )
@@ -885,9 +875,9 @@ class ConvNet_LID_DA_2(nn.Module):
         # Convolutional Block 2
         self.ConvLayer2 = nn.Sequential(
             nn.Conv1d(in_channels=num_channels[0],
-                out_channels=num_channels[1],
-                kernel_size=filter_sizes[1],
-                stride=stride_steps[1]),
+                      out_channels=num_channels[1],
+                      kernel_size=filter_sizes[1],
+                      stride=stride_steps[1]),
             nn.BatchNorm1d(num_channels[1]),
             nn.ReLU()
         )
@@ -895,9 +885,9 @@ class ConvNet_LID_DA_2(nn.Module):
         # Convolutional Block 3
         self.ConvLayer3 = nn.Sequential(
             nn.Conv1d(in_channels=num_channels[1],
-                out_channels=num_channels[2],
-                kernel_size=filter_sizes[2],
-                stride=stride_steps[2]),
+                      out_channels=num_channels[2],
+                      kernel_size=filter_sizes[2],
+                      stride=stride_steps[2]),
             nn.BatchNorm1d(num_channels[2]),
             nn.ReLU()
         )
@@ -914,44 +904,41 @@ class ConvNet_LID_DA_2(nn.Module):
         self.fc_layer = torch.nn.Sequential()
 
         self.fc_layer.add_module("fc1",
-            nn.Linear(num_channels[2], self.bottleneck_size))
+                                 nn.Linear(num_channels[2], self.bottleneck_size))
         self.fc_layer.add_module("relu_fc1", nn.ReLU())
-
-
 
         self.language_classifier = torch.nn.Sequential()
 
         self.language_classifier.add_module("fc2",
-            nn.Linear(self.bottleneck_size, self.output_dim))
+                                            nn.Linear(self.bottleneck_size, self.output_dim))
         self.language_classifier.add_module("relu_fc2", nn.ReLU())
-        #self.language_classifier.add_module("drop_fc2", nn.Dropout(self.unit_dropout_prob))
+        # self.language_classifier.add_module("drop_fc2", nn.Dropout(self.unit_dropout_prob))
 
         # Output fully connected --> softmax
         self.language_classifier.add_module("y_out",
-            nn.Linear(self.output_dim, num_classes))
+                                            nn.Linear(self.output_dim, num_classes))
 
         self.domain_classifier = nn.Sequential(
-            nn.Linear(num_channels[2], 1024), #nn.BatchNorm1d(100),
+            nn.Linear(num_channels[2], 1024),  # nn.BatchNorm1d(100),
             nn.ReLU(),
-            #nn.Dropout(self.unit_dropout_prob),
-            nn.Linear(1024, 1024), #nn.BatchNorm1d(100),
+            # nn.Dropout(self.unit_dropout_prob),
+            nn.Linear(1024, 1024),  # nn.BatchNorm1d(100),
             nn.ReLU(),
-            #nn.Dropout(self.unit_dropout_prob),
+            # nn.Dropout(self.unit_dropout_prob),
             nn.Linear(1024, 2)
         )
 
-
     def forward(self,
-        x_in,
-        apply_softmax=False,
-        return_bn=False,
-        frame_dropout=False,
-        feature_dropout=False,
-        frame_reverse=False,
-        frame_shuffle=False,
-        shuffle_bag_size= 1,
-        grl_lambda=1.0
-    ):
+                x_in,
+                apply_softmax=False,
+                return_bn=False,
+                frame_dropout=False,
+                feature_dropout=False,
+                frame_reverse=False,
+                frame_shuffle=False,
+                shuffle_bag_size=1,
+                grl_lambda=1.0
+                ):
         """The forward pass of the classifier
 
         Args:
@@ -969,7 +956,6 @@ class ConvNet_LID_DA_2(nn.Module):
         # signal dropout, disabled when evaluating unless explicitly asked for
         if self.training:
             x_in = self.signal_dropout(x_in)
-
 
         # signal masking during inference
         if self.eval and self.mask_signal:
@@ -1000,8 +986,6 @@ class ConvNet_LID_DA_2(nn.Module):
 
                 if _name == 'relu_fc2':
                     return feature_vector
-
-
 
         reverse_f = GradientReversal.apply(f, grl_lambda)
 
