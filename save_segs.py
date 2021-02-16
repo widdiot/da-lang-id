@@ -41,7 +41,7 @@ decodable_opts.extra_right_context_final = 0
 decodable_opts.frames_per_chunk = 150
 decodable_opts.acoustic_scale = 0.3
 sad = NnetSAD(model, transform, graph, decodable_opts=decodable_opts)
-seg = SegmentationProcessor(target_labels=[2])
+seg = SegmentationProcessor(target_labels=[2],min_segment_dur=3,max_merged_segment_dur=3.84)
 
 
 def convert_to_wav(path):

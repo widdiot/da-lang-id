@@ -1,7 +1,7 @@
 import os
 import sys
 import yaml
-
+import random
 import save_segs
 from kaldi.feat.mfcc import MfccOptions, Mfcc
 from kaldi.feat.window import FrameExtractionOptions
@@ -49,8 +49,9 @@ nn_LID_model_DA = ConvNet_LID_DA(
     stride_steps=config_args['model_arch']['stride_steps'],
     pooling_type=config_args['model_arch']['pooling_type'])
 
-nn_LID_model_DA.load_state_dict(torch.load(config_args['best_model']))
+nn_LID_model_DA.load_state_dict(torch.load(config_args['best_model'], map_location=torch.device('cpu')))
 
+print(nn_LID_model_DA)
 ############## cmn #################
 
 cmvn_stats = kaldiio.load_mat(config_args['source_cmvn'])
@@ -87,9 +88,19 @@ def lid_module(key, audio_file, start, end):
     hi_feat = hires_mfcc.compute_features(wav.data()[0], wav.samp_freq, 1.0)
     hi_feat = hi_feat.numpy() - CMVN
     X = hi_feat.T
-    X = np.expand_dims(np.expand_dims(X, 0), -1)
-    v = nn_LID_model_DA.predict(X)
-    print(v)
+    print(X.shape)
+    if X.shape[1] >= 384:
+        X = np.expand_dims(X[:,:384], 0)
+    else:
+        padded_x = torch.zeros(40, 384)
+        padded_x[:,:X.shape[1]]	 = torch.from_numpy(X)
+        X = np.expand_dims(padded_x, 0)
+    print(X.shape)
+    v,_ = nn_LID_model_DA(torch.from_numpy(X))
+    smax = torch.nn.functional.softmax(v)
+    print(smax)
+    print(i2l[torch.argmax(smax).item()])
+#    print(v)
     # # print(v.shape)
     # v = Vector(v[0, :])
     # v.add_vec_(-1.0, mean)
@@ -107,7 +118,7 @@ def lid_module(key, audio_file, start, end):
 
 if __name__ == "__main__":
     # wavs = glob.glob(args.data_path + '*/*.wav')
-    wavs = [wav]
+    wavs = ["telugu.wav"]
     for audio in wavs:
         utt = audio.split('/')[-1][:-4]
         Segments, _ = save_segs.build_response(audio)

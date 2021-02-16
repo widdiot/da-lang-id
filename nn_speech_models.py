@@ -8,7 +8,7 @@
 
 import numpy as np
 import random
-from sklearn  import preprocessing
+#from sklearn  import preprocessing
 import kaldiio
 import torch
 from torch import Tensor
@@ -753,7 +753,7 @@ class ConvNet_LID_DA(nn.Module):
 
 
         reverse_f = GradientReversal.apply(f, grl_lambda)
-
+        print(f.shape)
         y_hat = self.language_classifier(f)
         #print(reverse_f.shape)
         d_hat = self.domain_classifier(reverse_f)
