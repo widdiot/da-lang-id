@@ -765,6 +765,66 @@ class ConvNet_LID_DA(nn.Module):
         return y_hat, d_hat
 
 
+    def emb(self,
+        x_in,
+        apply_softmax=False,
+        return_bn=False,
+        frame_dropout=False,
+        feature_dropout=False,
+        frame_reverse=False,
+        frame_shuffle=False,
+        shuffle_bag_size= 1,
+        grl_lambda=1.0
+    ):
+        """The forward pass of the classifier
+
+        Args:
+            x_in (torch.Tensor): an input data tensor.
+                x_in.shape should be (batch_size, feature_dim, dataset._max_frames)
+            apply_softmax (bool): a flag for the softmax activation
+                should be false if used with the cross-entropy losses
+        Returns:
+            the resulting tensor. tensor.shape should be (batch, )
+        """
+
+        # the feature representation x_in has to go through the following
+        # transformations: 3 Convo layers, 1 MaxPool layer, 3 FC, then softmax
+
+        # signal dropout, disabled when evaluating unless explicitly asked for
+        if self.training:
+            x_in = self.signal_dropout(x_in)
+
+
+        # signal masking during inference
+        if self.eval and self.mask_signal:
+            x_in = self.signal_dropout(x_in)
+
+        # signal distortion during inference
+        if self.eval and frame_reverse: x_in = self.frame_reverse(x_in)
+        if self.eval and frame_shuffle: x_in = self.frame_shuffle(x_in, shuffle_bag_size)
+
+        # Convo block
+        f = self.ConvLayer1(x_in)
+        f = self.ConvLayer2(f)
+        f = self.ConvLayer3(f)
+
+        # max pooling
+        f = self.PoolLayer(f).squeeze(dim=2)
+
+        # if we need to analyze bottle neck feature, go into this code block
+        # if return_bn:
+        #     feature_vector = f
+        #     for _name, module in self.language_classifier._modules.items():
+        #         feature_vector = module(feature_vector)
+        #
+        #         if _name == 'relu_bn':
+        #             return feature_vector
+        print(f.shape)
+        y_hat = self.language_classifier.fc_bn(f)
+        print(y_hat.shape)
+        return y_hat
+
+
 ##### DA-LID II: Spoken Language ID Model with Domain Adaptation [2]
 class ConvNet_LID_DA_2(nn.Module):
     def __init__(self,
