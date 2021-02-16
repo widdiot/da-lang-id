@@ -791,38 +791,16 @@ class ConvNet_LID_DA(nn.Module):
         # transformations: 3 Convo layers, 1 MaxPool layer, 3 FC, then softmax
 
         # signal dropout, disabled when evaluating unless explicitly asked for
-        if self.training:
-            x_in = self.signal_dropout(x_in)
-
-
-        # signal masking during inference
-        if self.eval and self.mask_signal:
-            x_in = self.signal_dropout(x_in)
-
-        # signal distortion during inference
-        if self.eval and frame_reverse: x_in = self.frame_reverse(x_in)
-        if self.eval and frame_shuffle: x_in = self.frame_shuffle(x_in, shuffle_bag_size)
-
-        # Convo block
-        f = self.ConvLayer1(x_in)
-        f = self.ConvLayer2(f)
-        f = self.ConvLayer3(f)
-
-        # max pooling
-        f = self.PoolLayer(f).squeeze(dim=2)
-
-        # if we need to analyze bottle neck feature, go into this code block
-        # if return_bn:
-        #     feature_vector = f
-        #     for _name, module in self.language_classifier._modules.items():
-        #         feature_vector = module(feature_vector)
-        #
-        #         if _name == 'relu_bn':
-        #             return feature_vector
-        print(f.shape)
-        y_hat = self.language_classifier.fc_bn(f)
-        print(y_hat.shape)
-        return y_hat
+        with torch.no_grad():
+            # Convo block
+            f = self.ConvLayer1(x_in)
+            f = self.ConvLayer2(f)
+            f = self.ConvLayer3(f)
+#           print(f.shape)
+            # max pooling
+            f = self.PoolLayer(f).squeeze(dim=2)
+            y_hat = self.language_classifier.fc_bn(f)
+            return y_hat
 
 
 ##### DA-LID II: Spoken Language ID Model with Domain Adaptation [2]
