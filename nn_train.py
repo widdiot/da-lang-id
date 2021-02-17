@@ -20,7 +20,7 @@ from sklearn.metrics import balanced_accuracy_score
 
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset
-
+from itertools import cycle
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -318,7 +318,7 @@ try:
         )
 
 
-        max_batches = min(source_total_batches, target_total_batches)
+        max_batches = max(source_total_batches, target_total_batches)
         #print(source_total_batches, target_total_batches)
 
         running_cls_loss = 0.0
@@ -331,7 +331,7 @@ try:
         nn_LID_model_DA.train()
 
 
-        for batch_index, (src_batch_dict, tgt_batch_dict) in enumerate(zip(source_batch_generator, target_batch_generator)):
+        for batch_index, (src_batch_dict, tgt_batch_dict) in enumerate(zip(source_batch_generator, cycle(target_batch_generator))):
             # the training routine is these 5 steps:
 
             # --------------------------------------
@@ -426,7 +426,7 @@ try:
         )
 
 
-        max_batches = min(source_total_batches, target_total_batches)
+        max_batches = max(source_total_batches, target_total_batches)
         #print(source_total_batches, target_total_batches)
 
         running_cls_loss = 0.0
@@ -442,7 +442,7 @@ try:
         y_src_true, y_src_pred = [], []
         y_tgt_true, y_tgt_pred = [], []
 
-        for batch_index, (src_batch_dict, tgt_batch_dict) in enumerate(zip(source_batch_generator, target_batch_generator)):
+        for batch_index, (src_batch_dict, tgt_batch_dict) in enumerate(zip(source_batch_generator, cycle(target_batch_generator))):
 
             # step 1. forward pass and compute loss on source domain
             src_dmn_trues = torch.zeros(src_batch_dict['x_data'].shape[0], dtype=torch.long, device=config_args['device']) # generate source domain labels

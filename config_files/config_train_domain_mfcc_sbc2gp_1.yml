@@ -6,7 +6,7 @@ target_speech_metadata: '/home/gnani/LID_DA/target.csv'
 source_cmvn: '/home/gnani/LID_DA/train/cmvn.ark'
 target_cmvn: '/home/gnani/LID_DA/train/cmvn.ark'
 model_state_file: 'first_model'
-model_save_dir: 'test4/'
+model_save_dir: 'test5/'
 source_language_set: 'bengali english hindi kannada malayalam marathi tamil telugu'
 target_language_set: 'hindi'
 seed: 1337
@@ -41,11 +41,11 @@ model_arch:
        - 1
        - 1
        - 1
-    pooling_type: 'max'
+    pooling_type: 'vlad'
 training_hyperparams:
     learning_rate: 0.001
-    batch_size: 256
-    num_epochs: 100
+    batch_size: 64
+    num_epochs: 20
     early_stopping_criteria: 50
 cuda: True
 catch_keyboard_interrupt: True

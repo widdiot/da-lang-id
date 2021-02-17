@@ -663,9 +663,13 @@ class ConvNet_LID_DA(nn.Module):
 
         # Fully conntected layers block - Language classifier
         self.language_classifier = torch.nn.Sequential()
-
-        self.language_classifier.add_module("fc_bn",
+        if self.pooling_type == 'max':
+            self.language_classifier.add_module("fc_bn",
                                             nn.Linear(num_channels[2], self.bottleneck_size))
+        elif self.pooling_type == 'vlad':
+            self.language_classifier.add_module("fc_bn",
+                                            nn.Linear(16384, self.bottleneck_size))
+
         self.language_classifier.add_module("relu_bn", nn.ReLU())
 
         # then project to higher dim
@@ -677,13 +681,23 @@ class ConvNet_LID_DA(nn.Module):
         self.language_classifier.add_module("y_hat",
                                             nn.Linear(self.output_dim, num_classes))
 
-        self.domain_classifier = nn.Sequential(
-            nn.Linear(num_channels[2], 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 2)
-        )
+        if self.pooling_type == 'max':
+            self.domain_classifier = nn.Sequential(
+                nn.Linear(num_channels[2], 1024),
+                nn.ReLU(),
+                nn.Linear(1024, 1024),
+                nn.ReLU(),
+                nn.Linear(1024, 2)
+            )
+        elif self.pooling_type == 'vlad':
+            self.domain_classifier = nn.Sequential(
+                nn.Linear(16384, 1024),
+                nn.ReLU(),
+                nn.Linear(1024, 1024),
+                nn.ReLU(),
+                nn.Linear(1024, 2)
+            )
+
 
     def forward(self,
                 x_in,
@@ -745,7 +759,7 @@ class ConvNet_LID_DA(nn.Module):
         #             return feature_vector
 
         reverse_f = GradientReversal.apply(f, grl_lambda)
-        print(f.shape)
+#        print(f.shape)
         y_hat = self.language_classifier(f)
         # print(reverse_f.shape)
         d_hat = self.domain_classifier(reverse_f)
