@@ -441,6 +441,10 @@ class ConvNet_LID(nn.Module):
             # after examining the dataflow in the network and
             # observing the resulting tensor shapes
             self.PoolLayer = nn.MaxPool1d(kernel_size=362, stride=1)
+           
+        elif self.pooling_type == 'vlad':
+            self.PoolLayer = NetVLAD(num_clusters=32, dim=512, alpha=1.0)
+            
         else:
             raise NotImplementedError
 
@@ -449,8 +453,12 @@ class ConvNet_LID(nn.Module):
 
         if bottleneck:
             # Bottleneck layer
-            self.language_classifier.add_module("fc_bn",
-                                                nn.Linear(num_channels[2], self.bottleneck_size))
+            if self.pooling_type == 'max':
+                self.language_classifier.add_module("fc_bn",
+                                            nn.Linear(num_channels[2], self.bottleneck_size))
+            elif self.pooling_type == 'vlad':
+                self.language_classifier.add_module("fc_bn",
+                                            nn.Linear(16384, self.bottleneck_size))
             self.language_classifier.add_module("relu_bn", nn.ReLU())
 
             # then project to higher dim
@@ -462,9 +470,13 @@ class ConvNet_LID(nn.Module):
             # then project to two identical fc layers
             # self.language_classifier.add_module("fc1", nn.Linear(512, 512))
             # self.language_classifier.add_module("relu_fc1", nn.ReLU())
+            if self.pooling_type == 'max':
+                self.language_classifier.add_module("fc2",
+                                            nn.Linear(num_channels[2], self.output_dim))
+            elif self.pooling_type == 'vlad':
+                self.language_classifier.add_module("fc2",
+                                            nn.Linear(16384, self.output_dim))
 
-            self.language_classifier.add_module("fc2",
-                                                nn.Linear(num_channels[2], self.output_dim))
             self.language_classifier.add_module("relu_fc2", nn.ReLU())
 
         # Output fully connected --> softmax
@@ -513,7 +525,12 @@ class ConvNet_LID(nn.Module):
         f = self.ConvLayer3(f)
 
         # max pooling
-        f = self.PoolLayer(f).squeeze(dim=2)
+
+        if self.pooling_type == 'max':
+            f = self.PoolLayer(f).squeeze(dim=2)
+
+        elif self.pooling_type == 'vlad':
+            f = self.PoolLayer(f.unsqueeze(-1))
 
         # if we need to analyze bottleneck feature, go into this code block
         if return_bn:
